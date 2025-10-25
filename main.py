@@ -8,7 +8,7 @@ GEMINI_API_KEY = "AIzaSyANUlbK97fpMfIe-RPmaR-Zlc93SaOBo_8"
 
 @app.route("/")
 def home():
-    return "Bot is running and Gemini debug enabled"
+    return "🤖 Bot is running with Gemini v1beta1!"
 
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
@@ -19,26 +19,26 @@ def webhook():
     chat_id = update["message"]["chat"]["id"]
     text = update["message"].get("text", "")
 
-    # Gemini API арқылы жауап алу
     try:
-        gemini_url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + GEMINI_API_KEY
+        # ✅ v1beta1 нұсқасын қолданамыз (жұмыс істейтін нұсқа)
+        gemini_url = f"https://generativelanguage.googleapis.com/v1beta1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [
                 {"parts": [{"text": text}]}
             ]
         }
-        headers = {"Content-Type": "application/json"}
+
         response = requests.post(gemini_url, headers=headers, json=payload)
         data = response.json()
 
         if "candidates" in data:
             reply = data["candidates"][0]["content"]["parts"][0]["text"]
         else:
-            reply = f"Қате Gemini жауап: {data}"
+            reply = f"⚠️ Gemini error: {data}"
     except Exception as e:
         reply = f"Қате: {e}"
 
-    # Telegram-ға жауап қайтару
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={
         "chat_id": chat_id,
         "text": reply
