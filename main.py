@@ -6,7 +6,7 @@ app = Flask(__name__)
 BOT_TOKEN = "8009566735:AAGV-oF1oHq6dpmJh3gmvqC92xXZVVzrIVg"
 GEMINI_API_KEY = "AIzaSyANUlbK97fpMfIe-RPmaR-Zlc93SaOBo_8"
 # MODEL варианттары: "gemini-pro", "gemini-1.5-flash-latest", "gemini-flash-latest"
-GEMINI_MODEL = "gemini-pro"
+GEMINI_MODEL = "gemini-1.5-flash"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
