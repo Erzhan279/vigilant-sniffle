@@ -7,7 +7,7 @@ app = Flask(__name__)
 # === 🔐 Токендер ===
 BOT_TOKEN = "6947421569:AAGCqkNTN6AhlgZLHW6Q_B0ild7TMnf03so"
 CHANNEL_ID = "-1002948354799"
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"   # ← мұнда өзіңнің жұмыс істеп тұрған Gemini API Key қой
+GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qXAIJa5d7Zlk"   # ← мұнда өзіңнің жұмыс істеп тұрған Gemini API Key қой
 
 # === 🔗 Telegram API URL ===
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
