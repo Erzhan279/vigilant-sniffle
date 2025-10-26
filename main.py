@@ -1,10 +1,8 @@
 from flask import Flask, request
 import requests, json, os, threading, time
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
-import io
+from googleapiclient.http import MediaFileUpload
 
 app = Flask(__name__)
 
@@ -14,73 +12,63 @@ CHANNEL_ID = "-1002948354799"
 CHANNEL_LINK = "https://t.me/+3gQIXD-xl1Q0YzY6"
 GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qXAIJa5d7Zlk"
 
+# === Google Drive параметрлері ===
+GOOGLE_CREDENTIALS_FILE = "client_secret_873098965972-hs2fkrmj3qigtdmge4rv8otimhmhb0v4.apps.googleusercontent.com.json"
+FOLDER_ID = "14iPNSmNbq5r_7w8PqFHN-FSwFx838PKz"
+
+# === Telegram және Gemini ===
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-DRIVE_FOLDER_ID = "14iPNSmNbq5r_7w8PqFHN-FSwFx838PKz"
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
 MEMORY_FILE = "channel_memory.json"
 INFO_FILE = "channel_info.json"
 
-# === 📂 Google Drive байланысы ===
+ADMIN_ID = 1815036801  # 👈 Тек осы ID /files командасын пайдалана алады
+
+
+# === 🧩 Google Drive Service ===
 def get_drive_service():
-    creds = None
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-    else:
-        flow = InstalledAppFlow.from_client_secrets_file("client_secret_873098965972-hs2fkrmj3qigtdmge4rv8otimhmhb0v4.apps.googleusercontent.com.json", SCOPES)
-        creds = flow.run_local_server(port=0)
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
-    return build('drive', 'v3', credentials=creds)
+    creds = Credentials.from_authorized_user_file(GOOGLE_CREDENTIALS_FILE, ["https://www.googleapis.com/auth/drive.file"])
+    return build("drive", "v3", credentials=creds)
 
-# === 🔼 Файлды Drive-қа жүктеу ===
-def upload_to_drive(filename):
+def find_file_on_drive(filename):
+    service = get_drive_service()
+    results = service.files().list(
+        q=f"name='{filename}' and '{FOLDER_ID}' in parents and trashed=false",
+        spaces="drive",
+        fields="files(id, name, modifiedTime)"
+    ).execute()
+    files = results.get("files", [])
+    return files[0] if files else None
+
+def upload_or_replace_drive_file(filename):
     try:
         service = get_drive_service()
-        file_metadata = {'name': filename, 'parents': [DRIVE_FOLDER_ID]}
-        media = MediaFileUpload(filename, resumable=True)
-        service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        print(f"✅ {filename} Google Drive-қа жүктелді.")
+        file_info = find_file_on_drive(filename)
+        media = MediaFileUpload(filename, mimetype="application/json")
+        if file_info:
+            service.files().update(fileId=file_info["id"], media_body=media).execute()
+            print(f"♻️ Drive файлы жаңартылды: {filename}")
+        else:
+            file_metadata = {"name": filename, "parents": [FOLDER_ID]}
+            service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+            print(f"✅ Drive-қа жаңа файл жүктелді: {filename}")
     except Exception as e:
-        print("❌ Drive жүктеу қатесі:", e)
+        print(f"❌ Drive қатесі: {e}")
 
-# === 🔽 Drive-тен файлды жүктеу ===
-def download_from_drive(filename):
-    try:
-        service = get_drive_service()
-        results = service.files().list(q=f"name='{filename}' and '{DRIVE_FOLDER_ID}' in parents",
-                                       spaces='drive', fields='files(id, name)').execute()
-        items = results.get('files', [])
-        if not items:
-            return False
-        file_id = items[0]['id']
-        request_drive = service.files().get_media(fileId=file_id)
-        fh = io.FileIO(filename, 'wb')
-        downloader = MediaIoBaseDownload(fh, request_drive)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        print(f"✅ {filename} Google Drive-тен жүктелді.")
-        return True
-    except Exception as e:
-        print("❌ Drive жүктеу қатесі:", e)
-        return False
 
-# === 📦 JSON сақтау/жүктеу ===
+# === 🧠 JSON сақтау ===
 def save_json(filename, data):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    upload_to_drive(filename)
+    upload_or_replace_drive_file(filename)
 
 def load_json(filename):
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
-    if download_from_drive(filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            return json.load(f)
     return []
+
 
 # === 📡 Канал посттарын алу ===
 def get_channel_posts(limit=50):
@@ -97,12 +85,14 @@ def get_channel_posts(limit=50):
                         posts.append(text)
         posts = posts[-limit:]
         save_json(MEMORY_FILE, posts)
+        print(f"✅ {len(posts)} пост сақталды және Drive-қа жіберілді.")
         return posts
     except Exception as e:
         print("❌ Қате (канал посттарын алу):", e)
         return []
 
-# === 📖 Арна туралы ақпарат сақтау ===
+
+# === 📖 Арна туралы ақпарат ===
 def save_channel_info():
     info = {
         "name": "Qazaqsha Films 🎬",
@@ -113,26 +103,31 @@ def save_channel_info():
         "topic": "Фильмдер мен қазақша кино әлемі"
     }
     save_json(INFO_FILE, info)
+    print("✅ Арна туралы ақпарат сақталды және Drive-қа көшірілді.")
+
 
 # === 🔁 3 сағат сайын жаңарту ===
 def update_channel_data():
     while True:
+        print("♻️ Канал деректерін жаңарту...")
         get_channel_posts()
         save_channel_info()
         time.sleep(3 * 60 * 60)
 
-# === 🤖 Gemini API ===
+
+# === Gemini API ===
 def ask_gemini(prompt):
     data = {
         "contents": [{"parts": [{"text": f"Сен Qazaqsha Films Telegram арнасының көмекшісісің. "
-                                     f"Арна сипаттамасы: {load_json(INFO_FILE)}. "
-                                     f"Соңғы 50 пост: {load_json(MEMORY_FILE)}. "
+                                     f"Тек сол арна жайлы жауап бер. Арнада қазақша фильмдер бар. "
+                                     f"Міне соңғы 50 пост: {load_json(MEMORY_FILE)}. "
                                      f"Пайдаланушы сұрағы: {prompt}"}]}]
     }
-    r = requests.post(GEMINI_URL, headers={
-        "Content-Type": "application/json",
-        "X-goog-api-key": GEMINI_API_KEY
-    }, json=data)
+    r = requests.post(
+        GEMINI_URL,
+        headers={"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY},
+        json=data
+    )
     if r.status_code == 200:
         try:
             js = r.json()
@@ -142,12 +137,14 @@ def ask_gemini(prompt):
     else:
         return f"⚠️ Gemini қатесі: {r.text}"
 
-# === 📤 Telegram хабарлама жіберу ===
+
+# === Telegram хабарламалары ===
 def send_message(chat_id, text, buttons=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if buttons:
         payload["reply_markup"] = {"keyboard": buttons, "resize_keyboard": True}
     requests.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+
 
 # === 🌐 Webhook ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
@@ -159,44 +156,61 @@ def webhook():
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
 
+    # 🔹 Тек админ ғана /files қолдана алады
+    if text.lower() == "/files":
+        if chat_id != ADMIN_ID:
+            send_message(chat_id, "⚠️ Бұл команда тек админге арналған.")
+            return "ok"
+        service = get_drive_service()
+        results = service.files().list(
+            q=f"'{FOLDER_ID}' in parents and trashed=false",
+            fields="files(name, modifiedTime, webViewLink)"
+        ).execute()
+        files = results.get("files", [])
+        if not files:
+            send_message(chat_id, "📂 Drive-та файл табылмады 😅")
+        else:
+            msg_text = "📂 <b>Google Drive-тағы файлдар:</b>\n\n"
+            for f in files:
+                msg_text += f"🔸 <a href='{f['webViewLink']}'>{f['name']}</a>\n🕓 {f['modifiedTime']}\n\n"
+            send_message(chat_id, msg_text)
+        return "ok"
+
     if text.lower() == "/start":
         buttons = [
             ["🔍 Кино іздеу", "🧠 Маған қандай кино ұсынасын"],
             ["🆕 Жаңадан шыққан кино", "🔥 ТІРКЕЛУ 🔥"]
         ]
-        welcome = "🎬 <b>Qazaqsha Films</b> әлеміне қош келдің!\n\nТөменнен таңда ⤵️"
-        send_message(chat_id, welcome, buttons)
+        send_message(chat_id, "🎬 Qazaqsha Films әлеміне қош келдің!", buttons)
         return "ok"
 
     if "ТІРКЕЛУ" in text:
-        send_message(chat_id, f'📺 <b>Арна:</b>\n👉 <a href="{CHANNEL_LINK}">Qazaqsha Films</a>')
+        send_message(chat_id, f'📺 <b>Біздің арна:</b>\n👉 <a href="{CHANNEL_LINK}">Qazaqsha Films</a>')
         return "ok"
 
     if "Жаңадан шыққан" in text:
         posts = load_json(MEMORY_FILE)
-        latest = "\n\n".join(posts[-5:]) if posts else "Посттар табылмады 😅"
+        latest = "\n\n".join(posts[-5:]) if posts else "Әзірге жаңа кино жоқ 😅"
         send_message(chat_id, f"🆕 <b>Соңғы кинолар:</b>\n\n{latest}")
-        return "ok"
-
-    if "Кино іздеу" in text:
-        send_message(chat_id, "🔍 Қай киноны іздейсің? Атын жаз 👇")
         return "ok"
 
     posts = load_json(MEMORY_FILE)
     found = [m for m in posts if text.lower() in m.lower()]
     if found:
-        send_message(chat_id, "🔎 Табылған кинолар:\n\n" + "\n".join([f"🎬 <b>{m}</b>" for m in found[:5]]))
+        send_message(chat_id, "🔎 Табылған кинолар:\n\n" + "\n\n".join(found[:5]))
     else:
-        send_message(chat_id, "🎞 " + ask_gemini(text))
+        send_message(chat_id, f"🎞 {ask_gemini(text)}")
     return "ok"
+
 
 @app.route("/")
 def home():
-    return "🎬 Qazaqsha Films бот жұмыс істеп тұр ✅"
+    return "🎬 Qazaqsha Films бот Google Drive-пен жұмыс істеп тұр ✅"
+
 
 if __name__ == "__main__":
-    download_from_drive(MEMORY_FILE)
-    download_from_drive(INFO_FILE)
+    save_channel_info()
+    get_channel_posts()
     threading.Thread(target=update_channel_data, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
