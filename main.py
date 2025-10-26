@@ -5,6 +5,12 @@ import os
 import threading
 import time
 
+# === 📦 Google Drive интеграциясы ===
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
 app = Flask(__name__)
 
 # === 🔐 Токендер мен параметрлер ===
@@ -18,11 +24,38 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0
 
 MEMORY_FILE = "channel_memory.json"
 INFO_FILE = "channel_info.json"
+CREDENTIALS_FILE = "client_secret.json"
+TOKEN_FILE = "token.json"
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+# === 🧠 Google Drive сервисі ===
+def get_drive_service():
+    creds = None
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    if not creds or not creds.valid:
+        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
+        creds = flow.run_local_server(port=0)
+        with open(TOKEN_FILE, 'w') as token:
+            token.write(creds.to_json())
+    return build('drive', 'v3', credentials=creds)
+
+# === 📤 Drive-қа файлды жүктеу ===
+def upload_to_drive(filename):
+    try:
+        service = get_drive_service()
+        file_metadata = {'name': filename}
+        media = MediaFileUpload(filename, mimetype='application/json')
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        print(f"✅ {filename} Google Drive-қа жүктелді (ID: {file.get('id')})")
+    except Exception as e:
+        print(f"❌ Drive қатесі: {e}")
 
 # === 🧠 Есте сақтау функциялары ===
 def save_json(filename, data):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    upload_to_drive(filename)
 
 def load_json(filename):
     if os.path.exists(filename):
@@ -72,7 +105,7 @@ def update_channel_data():
         print("♻️ Канал деректерін жаңарту...")
         get_channel_posts()
         save_channel_info()
-        time.sleep(3 * 60 * 60)  # 3 сағат сайын
+        time.sleep(3 * 60 * 60)
 
 # === 🤖 Gemini API жауап ===
 def ask_gemini(prompt):
@@ -132,29 +165,24 @@ def webhook():
         send_message(chat_id, welcome, buttons)
         return "ok"
 
-    # 🔥 ТІРКЕЛУ
     if "ТІРКЕЛУ" in text:
         send_message(chat_id, f'📺 <b>Біздің арна:</b>\n👉 <a href="{CHANNEL_LINK}">Qazaqsha Films</a>')
         return "ok"
 
-    # 🆕 Соңғы кинолар
     if "Жаңадан шыққан" in text:
         posts = load_json(MEMORY_FILE)
         latest = "\n\n".join(posts[-5:]) if posts else "Әзірге жаңа кино жоқ 😅"
         send_message(chat_id, f"🆕 <b>Соңғы кинолар:</b>\n\n{latest}")
         return "ok"
 
-    # 🔍 Кино іздеу
     if "Кино іздеу" in text:
         send_message(chat_id, "🔍 Қай киноды іздейсің? Атын жаз 👇")
         return "ok"
 
-    # 🧠 Ұсыныс
     if "қандай кино ұсынасын" in text.lower():
         send_message(chat_id, "🎭 Қай жанр ұнайды? (драма, комедия, экшн т.б.)")
         return "ok"
 
-    # 🎬 Іздеу
     posts = load_json(MEMORY_FILE)
     found = [m for m in posts if text.lower() in m.lower()]
     if found:
@@ -166,12 +194,10 @@ def webhook():
 
     return "ok"
 
-# === 🏠 Басты бет ===
 @app.route("/")
 def home():
     return "🎬 Qazaqsha Films бот жұмыс істеп тұр ✅"
 
-# === 🚀 Серверді іске қосу ===
 if __name__ == "__main__":
     save_channel_info()
     get_channel_posts()
