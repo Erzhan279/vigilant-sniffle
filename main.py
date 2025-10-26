@@ -12,8 +12,14 @@ CHANNEL_LINK = "https://t.me/+3gQIXD-xl1Q0YzY6"
 GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qXAIJa5d7Zlk"
 
 # === Firebase орнату ===
-cred = credentials.Certificate("firebase_credentials.json")  # ← сенің Firebase service account JSON файлың
-firebase_admin.initialize_app(cred, {
+import json
+from firebase_admin import credentials, initialize_app
+
+# 🔥 Firebase конфигурациясы Environment-тан оқылады
+firebase_config = json.loads(os.environ["FIREBASE_CREDENTIALS"])
+
+cred = credentials.Certificate(firebase_config)
+initialize_app(cred, {
     "databaseURL": "https://kinobot-fe2ac-default-rtdb.firebaseio.com/"
 })
 
