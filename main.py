@@ -33,9 +33,14 @@ ADMIN_ID = 1815036801  # 👈 Тек осы ID /files командасын па�
 
 
 # === 🧩 Google Drive Service ===
+from google.oauth2.credentials import Credentials
+import json
+import os
+
 def get_drive_service():
-    creds = Credentials.from_authorized_user_file(
-        GOOGLE_CREDENTIALS_FILE, ["https://www.googleapis.com/auth/drive.file"]
+    creds = Credentials.from_authorized_user_info(
+        json.loads(os.environ["GOOGLE_CREDENTIALS"]),
+        ["https://www.googleapis.com/auth/drive.file"]
     )
     return build("drive", "v3", credentials=creds)
 
