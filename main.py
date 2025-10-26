@@ -13,7 +13,7 @@ CHANNEL_LINK = "https://t.me/+3gQIXD-xl1Q0YzY6"
 GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qXAIJa5d7Zlk"
 
 # === Google Drive параметрлері ===
-GOOGLE_CREDENTIALS_FILE = "client_secret_873098965972-hs2fkrmj3qigtdmge4rv8otimhmhb0v4.apps.googleusercontent.com.json"
+GOOGLE_CREDENTIALS_FILE = "google_credentials.json"  # ✅ қысқартылған атау
 FOLDER_ID = "14iPNSmNbq5r_7w8PqFHN-FSwFx838PKz"
 
 # === Telegram және Gemini ===
@@ -22,14 +22,16 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0
 
 MEMORY_FILE = "channel_memory.json"
 INFO_FILE = "channel_info.json"
-
 ADMIN_ID = 1815036801  # 👈 Тек осы ID /files командасын пайдалана алады
 
 
 # === 🧩 Google Drive Service ===
 def get_drive_service():
-    creds = Credentials.from_authorized_user_file(GOOGLE_CREDENTIALS_FILE, ["https://www.googleapis.com/auth/drive.file"])
+    creds = Credentials.from_authorized_user_file(
+        GOOGLE_CREDENTIALS_FILE, ["https://www.googleapis.com/auth/drive.file"]
+    )
     return build("drive", "v3", credentials=creds)
+
 
 def find_file_on_drive(filename):
     service = get_drive_service()
@@ -40,6 +42,7 @@ def find_file_on_drive(filename):
     ).execute()
     files = results.get("files", [])
     return files[0] if files else None
+
 
 def upload_or_replace_drive_file(filename):
     try:
@@ -62,6 +65,7 @@ def save_json(filename, data):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     upload_or_replace_drive_file(filename)
+
 
 def load_json(filename):
     if os.path.exists(filename):
@@ -156,7 +160,6 @@ def webhook():
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
 
-    # 🔹 Тек админ ғана /files қолдана алады
     if text.lower() == "/files":
         if chat_id != ADMIN_ID:
             send_message(chat_id, "⚠️ Бұл команда тек админге арналған.")
