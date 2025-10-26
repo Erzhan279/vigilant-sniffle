@@ -13,7 +13,14 @@ CHANNEL_LINK = "https://t.me/+3gQIXD-xl1Q0YzY6"
 GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qXAIJa5d7Zlk"
 
 # === Google Drive параметрлері ===
-GOOGLE_CREDENTIALS_FILE = "google_client_secret.json"  # ✅ қысқартылған атау
+
+import json
+from google.oauth2.credentials import Credentials
+
+creds = Credentials.from_authorized_user_info(
+    json.loads(os.environ["GOOGLE_CREDENTIALS"]),
+    ["https://www.googleapis.com/auth/drive.file"]
+)  # ✅ қысқартылған атау
 FOLDER_ID = "14iPNSmNbq5r_7w8PqFHN-FSwFx838PKz"
 
 # === Telegram және Gemini ===
