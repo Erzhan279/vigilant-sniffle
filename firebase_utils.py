@@ -1,43 +1,29 @@
-# firebase_utils.py
-import os, json, firebase_admin
+import firebase_admin
 from firebase_admin import credentials, db
+import json, os
 
 def initialize_firebase():
-    """Firebase-ті ENV немесе local файл арқылы қосу"""
     try:
-        cred = None
+        print("🔄 Firebase байланысын орнату...")
+        if not os.path.exists("serviceAccountKey.json"):
+            print("❌ serviceAccountKey.json табылмады!")
+            return None, None
 
-        # 🔍 Алдымен local файл бар ма тексереміз
-        if os.path.exists("serviceAccountKey.json"):
-            print("📄 Local serviceAccountKey.json табылды.")
-            cred = credentials.Certificate("serviceAccountKey.json")
+        # JSON тексеру
+        with open("serviceAccountKey.json", "r") as f:
+            data = json.load(f)
 
-        # 🔐 Егер local жоқ болса — ENV ішінен аламыз
-        else:
-            env_data = os.environ.get("FIREBASE_CREDENTIALS")
-            if not env_data:
-                raise FileNotFoundError("❌ FIREBASE_CREDENTIALS табылмады! Render ENV ішіне қосу керек.")
-            
-            # Render кейде \n орнына \\n береді, оны дұрыстаймыз
-            config = json.loads(env_data.replace('\\n', '\n'))
-            cred = credentials.Certificate(config)
-            print("🔐 ENV арқылы Firebase key жүктелді.")
+        cred = credentials.Certificate(data)
 
-        # 🔥 Firebase қосу
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(cred, {
-                "databaseURL": "https://kinobot-fe2ac-default-rtdb.firebaseio.com/"
-            })
-            print("🔥 Firebase іске қосылды!")
+        # Firebase Realtime Database URL
+        firebase_admin.initialize_app(cred, {
+            "databaseURL": "https://kinobot-fe2ac-default-rtdb.firebaseio.com/"
+        })
 
-        # 📦 Сілтемелер
-        info_ref = db.reference("/channel_info")
-        memory_ref = db.reference("/channel_memory")
+        info_ref = db.reference("info")
+        memory_ref = db.reference("memory")
 
-        # Тест — байланыс бар ма?
-        info_ref.get()
-        print("✅ Firebase байланысы жұмыс істейді!")
-
+        print("✅ Firebase байланысы сәтті орнатылды!")
         return info_ref, memory_ref
 
     except Exception as e:
