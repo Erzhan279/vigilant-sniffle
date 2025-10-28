@@ -16,8 +16,8 @@ ADMIN_ID = 1815036801  # Сенің Telegram ID-ің
 print("🔄 Firebase байланысын тексеру...")
 INFO_REF, MEMORY_REF = initialize_firebase()
 
-if INFO_REF is None or MEMORY_REF is None:
-    print("🚫 Firebase деректер базасы байланыспады!")
+if not INFO_REF or not MEMORY_REF:
+    print("🚫 Firebase деректер базасы байланыспады! Бэкап режимі іске қосылды.")
 else:
     print("✅ Firebase сәтті қосылды және дайын!")
 
@@ -48,18 +48,18 @@ def get_channel_posts(limit=50):
                     posts.append(text)
 
     posts = posts[-limit:]
-    if posts and MEMORY_REF:
-        MEMORY_REF.set(posts)
-        print(f"✅ {len(posts)} пост Firebase-ке сақталды.")
+    if posts:
+        if MEMORY_REF:
+            MEMORY_REF.set(posts)
+            print(f"✅ {len(posts)} пост Firebase-ке сақталды.")
+        else:
+            print("⚠️ Firebase жоқ, посттар тек жадта сақталды.")
     else:
-        print("⚠️ Пост табылған жоқ немесе Firebase қосылмаған.")
+        print("⚠️ Пост табылған жоқ.")
     return posts
 
 # === 📖 Арна туралы ақпарат Firebase-ке сақтау ===
 def save_channel_info():
-    if not INFO_REF:
-        print("⚠️ Firebase қосылмаған, INFO_REF бос.")
-        return
     info = {
         "name": "Qazaqsha Films 🎬",
         "description": "Қазақша дубляждалған ең жаңа фильмдер мен сериалдар. 🔥",
@@ -68,14 +68,21 @@ def save_channel_info():
         "language": "kk",
         "topic": "Фильмдер мен қазақша кино әлемі"
     }
-    INFO_REF.set(info)
-    print("✅ Арна туралы ақпарат Firebase-ке сақталды.")
+    if INFO_REF:
+        INFO_REF.set(info)
+        print("✅ Арна туралы ақпарат Firebase-ке сақталды.")
+    else:
+        print("⚠️ INFO_REF бос, Firebase сақтаусыз режимде жұмыс істейді.")
 
-# === 🔁 Әр 3 сағат сайын тексеріп тұру ===
+# === 🔁 Авто жаңарту (3 сағат сайын) ===
 def auto_refresh():
     while True:
         try:
-            posts = MEMORY_REF.get() if MEMORY_REF else None
+            if MEMORY_REF:
+                posts = MEMORY_REF.get()
+            else:
+                posts = None
+
             if not posts:
                 print("♻️ Firebase бос, посттарды қайта жүктеймін...")
                 get_channel_posts()
@@ -86,31 +93,31 @@ def auto_refresh():
             print("⚠️ Авто-жүктеу қатесі:", e)
         time.sleep(3 * 60 * 60)
 
-# === 🤖 Gemini Firebase арқылы жауап беру ===
+# === 🤖 Gemini жауап беру ===
 def ask_gemini(prompt):
-    posts = MEMORY_REF.get() or []
-    info = INFO_REF.get() or {}
-
-    context = (
-        f"Сен Qazaqsha Films Telegram арнасының көмекшісісің. "
-        f"Арна сипаттамасы: {info.get('description', '')}. "
-        f"Міне соңғы 50 пост:\n\n" + "\n".join(posts[-50:]) +
-        f"\n\nПайдаланушы сұрағы: {prompt}"
-    )
-
-    data = {"contents": [{"parts": [{"text": context}]}]}
-    r = requests.post(
-        GEMINI_URL,
-        headers={"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY},
-        json=data
-    )
-
     try:
+        posts = MEMORY_REF.get() if MEMORY_REF else []
+        info = INFO_REF.get() if INFO_REF else {}
+
+        context = (
+            f"Сен Qazaqsha Films Telegram арнасының көмекшісісің. "
+            f"Арна сипаттамасы: {info.get('description', '')}. "
+            f"Міне соңғы 50 пост:\n\n" + "\n".join(posts[-50:]) +
+            f"\n\nПайдаланушы сұрағы: {prompt}"
+        )
+
+        data = {"contents": [{"parts": [{"text": context}]}]}
+        r = requests.post(
+            GEMINI_URL,
+            headers={"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY},
+            json=data
+        )
+
         js = r.json()
         return js["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         print("⚠️ Gemini қатесі:", e)
-        return "⚠️ Gemini Firebase деректеріне сүйене алмады."
+        return "⚠️ Жауап алу кезінде қате пайда болды."
 
 # === 🌐 Telegram Webhook ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
@@ -123,6 +130,7 @@ def webhook():
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
 
+    # 🔧 Админ командалары
     if chat_id == ADMIN_ID:
         if text.lower() == "/files":
             info = INFO_REF.get() if INFO_REF else {}
@@ -143,6 +151,7 @@ def webhook():
                 send_message(chat_id, "✅ Соңғы 50 пост Firebase-ке жүктелді!")
             return "ok"
 
+    # 🔹 Қолданушы командалары
     if text.lower() == "/start":
         buttons = [
             ["🔍 Кино іздеу", "🧠 Кино ұсынысы"],
@@ -171,7 +180,8 @@ def webhook():
         send_message(chat_id, "🎭 Қай жанр ұнайды? (драма, комедия, экшн, қорқынышты т.б.)")
         return "ok"
 
-    posts = MEMORY_REF.get() or []
+    # 🔹 Іздеу немесе Gemini жауабы
+    posts = MEMORY_REF.get() if MEMORY_REF else []
     found = [m for m in posts if text.lower() in m.lower()]
     if found:
         send_message(chat_id, "🎞 Табылған кинолар:\n\n" + "\n\n".join(found[:5]))
