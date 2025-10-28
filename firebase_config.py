@@ -1,40 +1,31 @@
-# firebase_config.py
 import os
 import json
 import firebase_admin
 from firebase_admin import credentials, db
 
-INFO_REF = None
-MEMORY_REF = None
-
-def init_firebase():
-    global INFO_REF, MEMORY_REF
-
+def initialize_firebase():
     try:
-        # ENV-тен кілтті алу
-        firebase_json = os.environ.get("FIREBASE_CREDENTIALS")
-        if not firebase_json:
-            print("❌ FIREBASE_CREDENTIALS табылмады.")
-            return False
+        cred_json = os.environ.get("FIREBASE_CREDENTIALS")
+        if not cred_json:
+            print("🚫 FIREBASE_CREDENTIALS табылмады.")
+            return None, None
 
-        firebase_config = json.loads(firebase_json)
-        cred = credentials.Certificate(firebase_config)
+        # 🔧 Escape-ті дұрыстаймыз
+        cred_json = cred_json.replace("\\n", "\n")
 
-        # Firebase қосу
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(cred, {
-                "databaseURL": "https://kinobot-fe2ac-default-rtdb.firebaseio.com/"
-            })
-            print("🔥 Firebase іске қосылды!")
-        else:
-            print("⚠️ Firebase бұрыннан іске қосылған.")
+        cred_dict = json.loads(cred_json)
+        cred = credentials.Certificate(cred_dict)
 
-        INFO_REF = db.reference("channel_info")
-        MEMORY_REF = db.reference("channel_memory")
+        firebase_admin.initialize_app(cred, {
+            "databaseURL": "https://kinobot-fe2ac-default-rtdb.firebaseio.com/"
+        })
 
-        print("✅ Firebase байланысы дайын!")
-        return True
+        info_ref = db.reference("info")
+        memory_ref = db.reference("memory")
+
+        print("🔥 Firebase іске қосылды!")
+        return info_ref, memory_ref
 
     except Exception as e:
-        print("❌ Firebase қате:", e)
-        return False
+        print(f"🚫 Firebase қатесі: {e}")
+        return None, None
