@@ -6,38 +6,39 @@ from firebase_admin import credentials, db
 def initialize_firebase():
     try:
         print("🚀 Firebase инициализациясы басталды...")
-        creds_json = os.environ.get("FIREBASE_CREDENTIALS")
 
+        # Егер Firebase бұрын іске қосылған болса, қайта инициализация жасамаймыз
+        if firebase_admin._apps:
+            print("⚠️ Firebase бұрыннан іске қосылған, қайта инициализация жасалмайды.")
+            app = firebase_admin.get_app()
+            info_ref = db.reference("channel_info")
+            memory_ref = db.reference("channel_memory")
+            return info_ref, memory_ref
+
+        # 🔐 ENV ішіндегі JSON алу
+        creds_json = os.environ.get("FIREBASE_CREDENTIALS")
         if not creds_json:
             print("🚫 ENV айнымалысы FIREBASE_CREDENTIALS табылмады.")
             return None, None
 
-        # 🔍 ENV ішіндегіні тексеру
-        print("📦 ENV FIREBASE_CREDENTIALS табылды, ұзындығы:", len(creds_json))
+        # ✅ JSON ішіндегі \n форматтарын қалпына келтіру
+        creds = json.loads(creds_json.replace("\\n", "\n"))
 
-        # \\n-ды \n-ға ауыстыру (Render үшін маңызды)
-        creds_json_fixed = creds_json.replace('\\n', '\n')
-
-        try:
-            creds = json.loads(creds_json_fixed)
-        except json.JSONDecodeError as je:
-            print("❌ JSONDecodeError:", je)
-            return None, None
-
+        # 🔥 Firebase қосу
         cred = credentials.Certificate(creds)
-
         firebase_admin.initialize_app(cred, {
             "databaseURL": "https://kinobot-fe2ac-default-rtdb.firebaseio.com/"
         })
 
-        print("✅ Firebase іске қосылды!")
+        print("✅ Firebase іске қосылды және дерекқорға қосылды!")
 
         info_ref = db.reference("channel_info")
-        memory_ref = db.reference("channel_posts")
+        memory_ref = db.reference("channel_memory")
 
-        # 🔍 Байланысты тексеру
-        test_val = info_ref.get()
-        print("📊 Firebase test read:", test_val)
+        # Тест үшін жазып көреміз
+        test_path = db.reference("test_connection")
+        test_path.set({"status": "ok"})
+        print("📡 Firebase тест жазу сәтті өтті!")
 
         return info_ref, memory_ref
 
