@@ -13,9 +13,13 @@ GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qxAIJa5d7Zlk"
 ADMIN_ID = 1815036801  # Сенің Telegram ID-ің
 
 # === 🔥 Firebase инициализациясы ===
+print("🔄 Firebase байланысын тексеру...")
 INFO_REF, MEMORY_REF = initialize_firebase()
-if not INFO_REF or not MEMORY_REF:
-    print("⚠️ Firebase деректер базасы байланыспады!")
+
+if INFO_REF is None or MEMORY_REF is None:
+    print("🚫 Firebase деректер базасы байланыспады!")
+else:
+    print("✅ Firebase сәтті қосылды және дайын!")
 
 # === 🌍 API сілтемелер ===
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
