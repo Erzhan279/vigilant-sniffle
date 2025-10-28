@@ -1,38 +1,32 @@
 from flask import Flask, request
 import requests, json, os, threading, time
-from firebase_utils import initialize_firebase  # 🔥 Firebase бөлек файлда
+from firebase_utils import initialize_firebase
 
-# === 🚀 Flask қосымшасы ===
 app = Flask(__name__)
 
-# === 🔐 Бот параметрлері ===
 BOT_TOKEN = "6947421569:AAGCqkNTN6AhlgZLHW6Q_B0ild7TMnf03so"
 CHANNEL_ID = "-1002948354799"
 CHANNEL_LINK = "https://t.me/+3gQIXD-xl1Q0YzY6"
 GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qxAIJa5d7Zlk"
-ADMIN_ID = 1815036801  # Сенің Telegram ID-ің
+ADMIN_ID = 1815036801
 
-# === 🔥 Firebase инициализациясы ===
 print("🔄 Firebase байланысын тексеру...")
 INFO_REF, MEMORY_REF = initialize_firebase()
 
-if not INFO_REF or not MEMORY_REF:
+if INFO_REF is None or MEMORY_REF is None:
     print("🚫 Firebase деректер базасы байланыспады! Бэкап режимі іске қосылды.")
 else:
     print("✅ Firebase сәтті қосылды және дайын!")
 
-# === 🌍 API сілтемелер ===
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-# === 📤 Telegram хабар жіберу ===
 def send_message(chat_id, text, buttons=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if buttons:
         payload["reply_markup"] = {"keyboard": buttons, "resize_keyboard": True}
     requests.post(f"{TELEGRAM_API}/sendMessage", json=payload)
 
-# === 📡 Канал посттарын алу және Firebase-ке сақтау ===
 def get_channel_posts(limit=50):
     print("📡 Канал посттарын жүктеу басталды...")
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
@@ -48,18 +42,17 @@ def get_channel_posts(limit=50):
                     posts.append(text)
 
     posts = posts[-limit:]
-    if posts:
-        if MEMORY_REF:
-            MEMORY_REF.set(posts)
-            print(f"✅ {len(posts)} пост Firebase-ке сақталды.")
-        else:
-            print("⚠️ Firebase жоқ, посттар тек жадта сақталды.")
+    if posts and MEMORY_REF:
+        MEMORY_REF.set(posts)
+        print(f"✅ {len(posts)} пост Firebase-ке сақталды.")
     else:
-        print("⚠️ Пост табылған жоқ.")
+        print("⚠️ Пост табылған жоқ немесе Firebase қосылмаған.")
     return posts
 
-# === 📖 Арна туралы ақпарат Firebase-ке сақтау ===
 def save_channel_info():
+    if not INFO_REF:
+        print("⚠️ Firebase қосылмаған, INFO_REF бос.")
+        return
     info = {
         "name": "Qazaqsha Films 🎬",
         "description": "Қазақша дубляждалған ең жаңа фильмдер мен сериалдар. 🔥",
@@ -68,21 +61,13 @@ def save_channel_info():
         "language": "kk",
         "topic": "Фильмдер мен қазақша кино әлемі"
     }
-    if INFO_REF:
-        INFO_REF.set(info)
-        print("✅ Арна туралы ақпарат Firebase-ке сақталды.")
-    else:
-        print("⚠️ INFO_REF бос, Firebase сақтаусыз режимде жұмыс істейді.")
+    INFO_REF.set(info)
+    print("✅ Арна туралы ақпарат Firebase-ке сақталды.")
 
-# === 🔁 Авто жаңарту (3 сағат сайын) ===
 def auto_refresh():
     while True:
         try:
-            if MEMORY_REF:
-                posts = MEMORY_REF.get()
-            else:
-                posts = None
-
+            posts = MEMORY_REF.get() if MEMORY_REF else None
             if not posts:
                 print("♻️ Firebase бос, посттарды қайта жүктеймін...")
                 get_channel_posts()
@@ -93,11 +78,10 @@ def auto_refresh():
             print("⚠️ Авто-жүктеу қатесі:", e)
         time.sleep(3 * 60 * 60)
 
-# === 🤖 Gemini жауап беру ===
 def ask_gemini(prompt):
     try:
-        posts = MEMORY_REF.get() if MEMORY_REF else []
-        info = INFO_REF.get() if INFO_REF else {}
+        posts = MEMORY_REF.get() or []
+        info = INFO_REF.get() or {}
 
         context = (
             f"Сен Qazaqsha Films Telegram арнасының көмекшісісің. "
@@ -114,12 +98,14 @@ def ask_gemini(prompt):
         )
 
         js = r.json()
-        return js["candidates"][0]["content"]["parts"][0]["text"]
+        if "candidates" in js:
+            return js["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            return "⚠️ Gemini жауап бере алмады."
     except Exception as e:
         print("⚠️ Gemini қатесі:", e)
-        return "⚠️ Жауап алу кезінде қате пайда болды."
+        return "⚠️ Gemini серверімен байланыс болмады."
 
-# === 🌐 Telegram Webhook ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     update = request.get_json()
@@ -130,7 +116,6 @@ def webhook():
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "").strip()
 
-    # 🔧 Админ командалары
     if chat_id == ADMIN_ID:
         if text.lower() == "/files":
             info = INFO_REF.get() if INFO_REF else {}
@@ -151,7 +136,6 @@ def webhook():
                 send_message(chat_id, "✅ Соңғы 50 пост Firebase-ке жүктелді!")
             return "ok"
 
-    # 🔹 Қолданушы командалары
     if text.lower() == "/start":
         buttons = [
             ["🔍 Кино іздеу", "🧠 Кино ұсынысы"],
@@ -180,8 +164,7 @@ def webhook():
         send_message(chat_id, "🎭 Қай жанр ұнайды? (драма, комедия, экшн, қорқынышты т.б.)")
         return "ok"
 
-    # 🔹 Іздеу немесе Gemini жауабы
-    posts = MEMORY_REF.get() if MEMORY_REF else []
+    posts = MEMORY_REF.get() or []
     found = [m for m in posts if text.lower() in m.lower()]
     if found:
         send_message(chat_id, "🎞 Табылған кинолар:\n\n" + "\n\n".join(found[:5]))
