@@ -1,7 +1,6 @@
-# main.py
 from flask import Flask, request
 import requests, json, os, threading, time
-from firebase_utils import initialize_firebase  # ✅ Firebase бөлек файлдан келеді
+from firebase_utils import initialize_firebase  # 🔥 Firebase бөлек файлда
 
 # === 🚀 Flask қосымшасы ===
 app = Flask(__name__)
@@ -15,6 +14,8 @@ ADMIN_ID = 1815036801  # Сенің Telegram ID-ің
 
 # === 🔥 Firebase инициализациясы ===
 INFO_REF, MEMORY_REF = initialize_firebase()
+if not INFO_REF or not MEMORY_REF:
+    print("⚠️ Firebase деректер базасы байланыспады!")
 
 # === 🌍 API сілтемелер ===
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -69,13 +70,16 @@ def save_channel_info():
 # === 🔁 Әр 3 сағат сайын тексеріп тұру ===
 def auto_refresh():
     while True:
-        posts = MEMORY_REF.get() if MEMORY_REF else None
-        if not posts:
-            print("♻️ Firebase бос, посттарды қайта жүктеймін...")
-            get_channel_posts()
-            save_channel_info()
-        else:
-            print("✅ Посттар бар, қайта жүктеу қажет емес.")
+        try:
+            posts = MEMORY_REF.get() if MEMORY_REF else None
+            if not posts:
+                print("♻️ Firebase бос, посттарды қайта жүктеймін...")
+                get_channel_posts()
+                save_channel_info()
+            else:
+                print("✅ Посттар бар, қайта жүктеу қажет емес.")
+        except Exception as e:
+            print("⚠️ Авто-жүктеу қатесі:", e)
         time.sleep(3 * 60 * 60)
 
 # === 🤖 Gemini Firebase арқылы жауап беру ===
@@ -100,7 +104,8 @@ def ask_gemini(prompt):
     try:
         js = r.json()
         return js["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
+    except Exception as e:
+        print("⚠️ Gemini қатесі:", e)
         return "⚠️ Gemini Firebase деректеріне сүйене алмады."
 
 # === 🌐 Telegram Webhook ===
