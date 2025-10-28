@@ -1,7 +1,7 @@
+# main.py
 from flask import Flask, request
 import requests, json, os, threading, time
-import firebase_admin
-from firebase_admin import credentials, db
+from firebase_utils import initialize_firebase  # ✅ Firebase бөлек файлдан келеді
 
 # === 🚀 Flask қосымшасы ===
 app = Flask(__name__)
@@ -10,36 +10,11 @@ app = Flask(__name__)
 BOT_TOKEN = "6947421569:AAGCqkNTN6AhlgZLHW6Q_B0ild7TMnf03so"
 CHANNEL_ID = "-1002948354799"
 CHANNEL_LINK = "https://t.me/+3gQIXD-xl1Q0YzY6"
-GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qXAIJa5d7Zlk"
+GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qxAIJa5d7Zlk"
 ADMIN_ID = 1815036801  # Сенің Telegram ID-ің
 
-# === 🔥 Firebase баптауы (тұрақты жұмыс істейтін нұсқа) ===
-try:
-    if os.path.exists("serviceAccountKey.json"):
-        cred = credentials.Certificate("serviceAccountKey.json")
-        print("✅ Firebase key — жергілікті файлдан жүктелді.")
-    else:
-        firebase_config_str = os.environ.get("FIREBASE_CREDENTIALS", "")
-        if not firebase_config_str:
-            raise ValueError("⚠️ FIREBASE_CREDENTIALS бос тұр!")
-        firebase_config = json.loads(firebase_config_str.replace('\\n', '\n'))
-        cred = credentials.Certificate(firebase_config)
-        print("✅ Firebase key — ENV ішінен жүктелді.")
-
-    firebase_admin.initialize_app(cred, {
-        "databaseURL": "https://kinobot-fe2ac-default-rtdb.firebaseio.com"
-    })
-    print("🔥 Firebase сәтті қосылды!")
-
-    INFO_REF = db.reference("/channel_info")
-    MEMORY_REF = db.reference("/channel_memory")
-    INFO_REF.get()
-    print("✅ Firebase references дайын.")
-
-except Exception as e:
-    print("❌ Firebase қосылу қатесі:", e)
-    INFO_REF = None
-    MEMORY_REF = None
+# === 🔥 Firebase инициализациясы ===
+INFO_REF, MEMORY_REF = initialize_firebase()
 
 # === 🌍 API сілтемелер ===
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -78,9 +53,8 @@ def get_channel_posts(limit=50):
 # === 📖 Арна туралы ақпарат Firebase-ке сақтау ===
 def save_channel_info():
     if not INFO_REF:
-        print("⚠️ Firebase қосылмаған, сақтай алмаймын.")
+        print("⚠️ Firebase қосылмаған, INFO_REF бос.")
         return
-
     info = {
         "name": "Qazaqsha Films 🎬",
         "description": "Қазақша дубляждалған ең жаңа фильмдер мен сериалдар. 🔥",
@@ -89,21 +63,13 @@ def save_channel_info():
         "language": "kk",
         "topic": "Фильмдер мен қазақша кино әлемі"
     }
-    try:
-        INFO_REF.set(info)
-        print("✅ Арна туралы ақпарат Firebase-ке сақталды.")
-    except Exception as e:
-        print("❌ Firebase сақтау қатесі:", e)
+    INFO_REF.set(info)
+    print("✅ Арна туралы ақпарат Firebase-ке сақталды.")
 
 # === 🔁 Әр 3 сағат сайын тексеріп тұру ===
 def auto_refresh():
     while True:
-        if not MEMORY_REF:
-            print("⚠️ Firebase қосылмаған, авто-refresh тоқтап тұр.")
-            time.sleep(300)
-            continue
-
-        posts = MEMORY_REF.get()
+        posts = MEMORY_REF.get() if MEMORY_REF else None
         if not posts:
             print("♻️ Firebase бос, посттарды қайта жүктеймін...")
             get_channel_posts()
@@ -153,13 +119,13 @@ def webhook():
             info = INFO_REF.get() if INFO_REF else {}
             posts = MEMORY_REF.get() if MEMORY_REF else []
             send_message(chat_id,
-                         f"📊 Арна: {info.get('name', 'белгісіз')}\n"
+                         f"📊 Арна: {info.get('name', 'Белгісіз')}\n"
                          f"🗂 Пост саны: {len(posts) if posts else 0}\n"
                          f"🌐 Firebase синхрондалған ✅")
             return "ok"
 
         if text.lower() == "/gostart":
-            posts = MEMORY_REF.get() if MEMORY_REF else None
+            posts = MEMORY_REF.get() if MEMORY_REF else []
             if posts:
                 send_message(chat_id, "♻️ Соңғы посттар бұрыннан бар, қайта жүктелмейді.")
             else:
@@ -202,14 +168,12 @@ def webhook():
         send_message(chat_id, "🎞 Табылған кинолар:\n\n" + "\n\n".join(found[:5]))
     else:
         send_message(chat_id, ask_gemini(text))
-
     return "ok"
 
 @app.route("/")
 def home():
     return "🎬 Qazaqsha Films бот Firebase және Gemini-пен толық жұмыс істеп тұр ✅"
 
-# === 🚀 Іске қосу ===
 if __name__ == "__main__":
     threading.Thread(target=auto_refresh, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
