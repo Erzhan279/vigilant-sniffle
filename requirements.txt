@@ -1,7 +1,4 @@
-flask
-requests
-firebase-admin
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client 
+Flask==3.0.3
+requests==2.31.0
+firebase-admin==6.5.0
+gunicorn==22.0.0
