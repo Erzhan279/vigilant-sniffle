@@ -2,15 +2,14 @@ from flask import Flask, request
 import requests, json, os, threading, time
 from firebase_utils import initialize_firebase  # 🔥 Firebase бөлек файлда
 
-# === 🚀 Flask қосымшасы ===
 app = Flask(__name__)
 
 # === 🔐 Бот параметрлері ===
-BOT_TOKEN = "6947421569:AAGCqkNTN6AhlgZLHW6Q_B0ild7TMnf03so"
-CHANNEL_ID = "-1002948354799"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "6947421569:AAGCqkNTN6AhlgZLHW6Q_B0ild7TMnf03so")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "-1002948354799")
 CHANNEL_LINK = "https://t.me/+3gQIXD-xl1Q0YzY6"
-GEMINI_API_KEY = "AIzaSyAbCKTuPXUoCZ26l0bEQc0qxAIJa5d7Zlk"
-ADMIN_ID = 1815036801  # Сенің Telegram ID-ің
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyDI6cPqf_6gjW9b6BJYe1PULdZ06Lpb6b8")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1815036801"))
 
 # === 🔥 Firebase инициализациясы ===
 print("🔄 Firebase байланысын тексеру...")
@@ -23,7 +22,7 @@ else:
 
 # === 🌍 API сілтемелер ===
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 # === 📤 Telegram хабар жіберу ===
 def send_message(chat_id, text, buttons=None):
@@ -88,50 +87,39 @@ def auto_refresh():
 
 # === 🤖 Gemini Firebase арқылы жауап беру ===
 def ask_gemini(prompt):
-    posts = MEMORY_REF.get() or []
-    info = INFO_REF.get() or {}
-
-    context = (
-        f"Сен Qazaqsha Films Telegram арнасының көмекшісісің. "
-        f"Арна сипаттамасы: {info.get('description', '')}. "
-        f"Міне соңғы 50 пост:\n\n" + "\n".join(posts[-50:]) +
-        f"\n\nПайдаланушы сұрағы: {prompt}"
-    )
-
-    data = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": context}]
-            }
-        ]
-    }
-
     try:
+        posts = MEMORY_REF.get() or []
+        info = INFO_REF.get() or {}
+
+        context = (
+            f"Сен Qazaqsha Films Telegram арнасының көмекшісісің. "
+            f"Арна сипаттамасы: {info.get('description', '')}. "
+            f"Міне соңғы 50 пост:\n\n" + "\n".join(posts[-50:]) +
+            f"\n\nПайдаланушы сұрағы: {prompt}"
+        )
+
+        data = {"contents": [{"parts": [{"text": context}]}]}
+
         response = requests.post(
             GEMINI_URL,
             headers={
                 "Content-Type": "application/json",
-                "x-goog-api-key": GEMINI_API_KEY
+                "X-goog-api-key": GEMINI_API_KEY
             },
-            json=data,
-            timeout=20
+            json=data
         )
 
-        js = response.json()
-
-        if "candidates" in js and len(js["candidates"]) > 0:
-            text = js["candidates"][0]["content"]["parts"][0].get("text", "").strip()
-            if text:
-                return text
-            else:
-                return "🤖 Gemini жауап берді, бірақ бос нәтиже қайтарды."
+        if response.status_code == 200:
+            js = response.json()
+            text = js["candidates"][0]["content"]["parts"][0]["text"]
+            return text
         else:
-            print("⚠️ Gemini жауап бере алмады:", js)
+            print("⚠️ Gemini error:", response.text)
             return "⚠️ Кешіріңіз, серверден нақты жауап ала алмадым."
+
     except Exception as e:
         print("⚠️ Gemini қатесі:", e)
-        return "⚠️ Gemini серверімен байланыс орнатылмады."
+        return "⚠️ Gemini қате қайтарды, кейінірек қайталап көріңіз."
 
 # === 🌐 Telegram Webhook ===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
